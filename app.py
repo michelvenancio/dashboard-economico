@@ -2,7 +2,6 @@
 Dashboard Principal - Análisis de Datos Económicos
 Fundamentos de Análisis de Datos - Proyecto Final
 """
-from turtle import mode
 
 import streamlit as st
 import pandas as pd
@@ -563,7 +562,7 @@ if show_forecast:
                     st.json(res)  # Mostrar lo que sí tenemos
                 
                 # Tabla comparativa (solo en modo automático)
-                if mode == 'auto' and 'all_results' in res:
+                if st.session_state.get('optimization_mode') == 'auto' and 'all_results' in res:
                     st.markdown("##### 📊 Top 5 Modelos Evaluados")
                     top_models = res['all_results'].head(5)[['order', 'aic', 'bic']].copy()
                     top_models['order'] = top_models['order'].astype(str)
