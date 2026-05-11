@@ -13,10 +13,6 @@ env/
 venv/
 .venv/
 
-# Datos locales grandes (opcional)
-data/*.csv
-!data/.gitkeep
-
 # IDE
 .vscode/
 .idea/
