@@ -836,8 +836,6 @@ st.markdown("""
 <div class="footer">
     <strong>Dashboard de Investigación Económica</strong> | Fundamentos de Análisis de Datos  
     📊 Desarrollado con Python • Streamlit • Plotly • StatsModels  
-    🏛️ Inspirado en el diseño de <a href="https://www.datamexico.org/" target="_blank" style="color: var(--primary);">Data México</a>
-</div>
 """, unsafe_allow_html=True)
 
 # =============================================================================

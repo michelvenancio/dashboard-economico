@@ -1,6 +1,6 @@
 # 📊 Dashboard de Análisis de Datos Económicos
 
-> Proyecto final para la materia de **Fundamentos de Análisis de Datos**
+> Proyecto final para la materia de **Taller de Fundamentos de Análisis de Datos**
 
 ## 🔗 Fuentes de Datos
 - 🇲🇽 [INEGI](https://www.inegi.org.mx/servicios/api_indicadores.html) - Indicadores nacionales
@@ -21,27 +21,32 @@
     cd dashboard-economico
 
 #2. Crear entorno virtual (recomendado)
+   ```bash 
 # Windows
 python -m venv venv
 venv\Scripts\activate
-
 # Linux/Mac
 python3 -m venv venv
 source venv/bin/activate
 
 # 3. Instalar dependencias
+    ```bash
 pip install -r requirements.txt
 
 # 4. Configurar credenciales de API
     #Crear direcotorio .streamlit si no existe
+    ```bash
 mkdir -p .streamlit
 
     #Copiar archivo de ejemplo
+    ```bash
 cp secrets.example.toml .streamlit/secrets.toml
 
     # Editar .streamlit/secrets.toml con tus tokens reales
+    ```bash
 BANXICO_TOKEN = "tu_token_banxico"
 FRED_API_KEY = "tu_api_key_fred"
 
 # 5. Ejecutar dashboard
+    ```bash
 streamlit run app.py
