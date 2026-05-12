@@ -81,7 +81,7 @@ def multiple_regression(df: pd.DataFrame, y_col: str, x_cols: list, add_constant
         X = sm.add_constant(X)
     
     try:
-        model = sm.OLS(y, X).fit()
+        model = sm.OLS(y, X).fit(cov_type='HAC', cov_kwds={'maxlags':4})
         results = {
             'model': model,
             'coefficients': model.params,

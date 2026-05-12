@@ -311,38 +311,39 @@ series_dict = {
 with st.spinner("🔄 Procesando datos..."):
     df = load_data(data_source, series_dict, start_date, end_date)
 
-# === NUEVO: Resamplear a frecuencia trimestral ===
+# === NUEVO: Resamplear a frecuencia trimestral (Corrección Estructura.pdf) ===
 if df is not None and not df.empty:
-    # Verificar si hay mezcla de frecuencias (diaria + trimestral)
-    if len(df) > 100:  # Si hay muchas observaciones, probablemente es diaria
+    # Verificar si hay mezcla de frecuencias (muchos datos = probablemente diaria por Banxico/FRED)
+    if len(df) > 100: 
         
-        # Definir reglas de agregación por tipo de variable
+        # Definir reglas de agregación según el tipo de variable
         agg_rules = {}
-        
         for col in df.columns:
             if 'SF43718' in col or 'DEXMXUS' in col or 'TC' in col.upper():
-                # Tipo de cambio: promedio trimestral
-                agg_rules[col] = 'mean'
-            elif 'EXP' in col.upper() or 'EXPORT' in col.upper():
-                # Exportaciones: suma (es un flujo)
-                agg_rules[col] = 'sum'
+                agg_rules[col] = 'mean'      # TC: Promedio trimestral (correcto para diarios)
+            elif 'EXP' in col.upper() or 'SLP' in col.upper() or 'INEGI' in col.upper():
+                # ⚠️ CORRECCIÓN CLAVE: Para INEGI ya trimestral, usamos 'last' o 'mean'
+                # NO USAR 'sum' porque duplicaría el valor si ya es un total trimestral
+                agg_rules[col] = 'last'      
             elif 'PIB' in col.upper() or 'GDP' in col.upper():
-                # PIB: último valor del trimestre
-                agg_rules[col] = 'last'
-            elif 'CPI' in col.upper() or 'INPC' in col.upper() or 'UNRATE' in col.upper():
-                # Índices y tasas: último valor
-                agg_rules[col] = 'last'
-            elif 'vol' in col.lower() or 'VOL' in col.upper():
-                # Volatilidad: promedio
-                agg_rules[col] = 'mean'
+                agg_rules[col] = 'last'      # PIB: Último valor del trimestre
             else:
-                # Por defecto: promedio
-                agg_rules[col] = 'mean'
+                agg_rules[col] = 'mean'      # Por defecto
         
-        # Aplicar resampleo
-        df = resample_to_quarterly(df, agg_rules)
-        
-        st.info(f"📊 Datos convertidos a frecuencia trimestral: {len(df)} observaciones")
+        try:
+            # Aplicar la conversión trimestral usando 'QE' (Quarter End) para Pandas >= 2.0
+            df_trimestral = df.resample('QE').agg(agg_rules).dropna()
+            
+            # Limpiar índice para visualización
+            df_trimestral.index = df_trimestral.index.to_period('Q').to_timestamp()
+            
+            # Reemplazar df original
+            df = df_trimestral
+            
+            st.info(f"📊 Datos alineados a frecuencia trimestral: {len(df)} observaciones")
+            
+        except Exception as e:
+            st.warning(f"⚠️ Error al resamplear: {e}")
 
 # =============================================================================
 # MANEJO DE ERRORES Y ESTADO VACÍO

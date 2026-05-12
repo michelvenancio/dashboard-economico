@@ -186,8 +186,8 @@ def resample_to_quarterly(df: pd.DataFrame, agg_rules: dict) -> pd.DataFrame:
     if not pd.api.types.is_datetime64_any_dtype(df.index):
         df.index = pd.to_datetime(df.index)
     
-    # Resamplear a trimestral ('Q' = final de trimestre)
-    df_q = df.resample('Q').agg(agg_rules).dropna()
+    # Resamplear a trimestral ('QE' = final de trimestre) ✅ CORREGIDO
+    df_q = df.resample('QE').agg(agg_rules).dropna()
     
     # Cambiar a frecuencia de período trimestral (opcional, pero más limpio)
     df_q.index = df_q.index.to_period('Q').to_timestamp()
