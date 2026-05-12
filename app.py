@@ -400,10 +400,16 @@ else:
 )
 
 # Mostrar tarjetas de métricas
-if metrics:  # Solo si hay métricas
-    metric_cols = st.columns(len(metrics))
+# Después de calcular metrics (línea ~315)
+if metrics:
+    st.markdown("##### 📊 Últimos Valores por Variable")
+    
+    # Opción A: Grid de 3 columnas máximo (mejor para muchas variables)
+    num_cols = min(len(metrics), 3)  # Máximo 3 columnas
+    cols = st.columns(num_cols)
+    
     for i, (col_name, (value, suffix, prev, delta_num)) in enumerate(metrics.items()):
-        with metric_cols[i]:
+        with cols[i % num_cols]:  # Distribuye en filas si hay más de 3
             st.metric(
                 label=col_name,
                 value=f"{value}{suffix}",
