@@ -678,6 +678,27 @@ if show_regression and df is not None and not df.empty:
                 st.metric("R²", f"{result['r2']:.3f}")
                 st.metric("RMSE", f"{result['rmse']:.4f}")
 
+            # === NUEVO: Prueba de Cointegración (Engle-Granger) ===
+            # Verifica si los residuos del modelo son estacionarios (relación de largo plazo)
+                try:
+                    from statsmodels.tsa.stattools import adfuller
+                    # Usamos los residuos del modelo OLS que ya calculamos
+                    residuals = result['residuals'].dropna()
+                    adf_res = adfuller(residuals, autolag='AIC')
+                    is_cointegrated = adf_res[1] < 0.05
+                    
+                    st.divider()
+                    st.markdown("##### 🔄 Estabilidad de Largo Plazo (Cointegración)")
+                    
+                    if is_cointegrated:
+                        st.success("✅ **Cointegración Confirmada:** Existe una relación de equilibrio estable entre las variables a largo plazo.")
+                        st.caption(f"p-value (ADF sobre residuos): {adf_res[1]:.4f}")
+                    else:
+                        st.warning("⚠️ **No Cointegradas:** Podría tratarse de una regresión espuria (falsa relación por tendencia común).")
+                        st.caption(f"p-value (ADF sobre residuos): {adf_res[1]:.4f}")
+                        
+                except Exception:
+                    pass  # Silenciar errores menores para no romper el dashboard
         except Exception as e:
             st.error(f"❌ Error en regresión: {e}")
     else:

@@ -200,3 +200,35 @@ def auto_arima_optimization(series, max_p=3, max_d=2, max_q=3, forecast_steps=12
         'all_results': results_df,
         'forecast_steps': forecast_steps
     }
+
+def check_cointegration(df, y_col, x_cols):
+    """
+    Prueba de Cointegración (Engle-Granger).
+    Si los residuos de la regresión son estacionarios, hay cointegración.
+    """
+    try:
+        # 1. Ejecutar la regresión OLS en niveles (no logaritmos, ni diferencias)
+        # Nota: Cointegración se hace sobre las variables originales o log-transformadas si son I(1)
+        # Aquí usamos las columnas de logaritmo que ya tienes
+        X = sm.add_constant(df[x_cols])
+        y = df[y_col]
+        model = sm.OLS(y, X).fit()
+        
+        # 2. Obtener los residuos
+        residuals = model.resid
+        
+        # 3. Aplicar prueba ADF a los residuos
+        from statsmodels.tsa.stattools import adfuller
+        result = adfuller(residuals, autolag='AIC')
+        
+        p_value = result[1]
+        is_cointegrated = p_value < 0.05
+        
+        return {
+            'is_cointegrated': is_cointegrated,
+            'p_value': p_value,
+            'adf_stat': result[0],
+            'interpretation': "✅ Cointegración Confirmada (Relación de Largo Plazo)" if is_cointegrated else " No Cointegradas (Regresión Espuria)"
+        }
+    except Exception as e:
+        return {'error': str(e)}
