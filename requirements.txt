@@ -16,3 +16,4 @@ scikit-learn==1.4.0
 banxicoapi==1.0.2
 fredapi==0.5.1
 requests==2.31.0
+INEGIpy==2.0.0

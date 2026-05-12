@@ -95,7 +95,11 @@ def metric_card(title: str, value: str, delta: float = None, icon: str = "📈")
 
 
 # Importar módulos locales
-from src.data_extraction import get_banxico_data, get_fred_series, get_inegi_csv_data  # Añadido get_inegi_csv_data si lo usas aquí
+from src.data_extraction import (
+    get_banxico_data, 
+    get_fred_series, 
+    get_inegi_api_data
+)    # Añadido get_inegi_api_data si lo usas aquí
 from src.data_processing import (
     clean_economic_data, calculate_returns, add_technical_indicators,
     apply_log_transform, add_volatility_column, add_post_2020_dummy,
@@ -146,7 +150,7 @@ with st.sidebar:
 # Selección de fuente de datos — SIN ESPACIOS
     data_source = st.radio(
         "📡 Fuente de Datos",
-        ["🇲🇽 Banxico", "🇲🇽 INEGI (CSV)", "🇺🇸 FRED", "🔄 Combinar"],  # Añadida opción INEGI CSV
+        ["MX Banxico", "US FRED", "MX INEGI", "🔄 Combinar"],
         index=0
     )
     st.divider()
@@ -177,8 +181,9 @@ with st.sidebar:
         "UNRATE": "Tasa de Desempleo"
     }
 
-    inegi_csv_options = {
-        "EXP_SLP": "Exportaciones San Luis Potosí (Trimestrales)"
+    inegi_options = {
+        "6207095692": "Exportaciones SLP (Trimestral)",
+        "629680": "Exportaciones Automotrices SLP (Trimestral)"
     }
 
 # === Series disponibles — siempre mostradas, pero con lógica de habilitación ===
@@ -204,14 +209,14 @@ with st.sidebar:
         key="fred_series"
     )
 
-# INEGI (CSV)
-    with st.expander("🇲🇽 INEGI (CSV)", expanded=("INEGI" in data_source or "Combinar" in data_source)):
-        inegi_csv_series = st.multiselect(
-        "Series INEGI (CSV)",
-        options=list(inegi_csv_options.keys()),
-        format_func=lambda x: inegi_csv_options[x],
-        default=["EXP_SLP"],
-        key="inegi_csv_series"
+# INEGI (API)
+    with st.expander("🇲🇽 INEGI", expanded=("INEGI" in data_source or "Combinar" in data_source)):
+        inegi_api_series = st.multiselect(  # <--- Renombrado
+        "Series INEGI",
+        options=list(inegi_options.keys()),
+        format_func=lambda x: inegi_options[x],
+        default=["6207095692"],
+        key= "inegi_api_series"  # <--- Renombrado clave
     )
 
     st.divider()
@@ -230,6 +235,7 @@ with st.sidebar:
 # HEADER PRINCIPAL
 # =============================================================================
 st.markdown("""
+            
 <div class="header-title">
     <h1>📊 Impacto del Tipo de Cambio en las Exportaciones de San Luis Potosí</h1>
     <p style="color: var(--gray); margin: 8px 0;">
@@ -248,7 +254,7 @@ def load_data(source, series_dict, start, end):
     all_dfs = []
 
     # Banxico: solo si hay series y fuente válida
-    if source in ["🇲🇽 Banxico", "🔄 Combinar"] and series_dict.get('banxico') and len(series_dict['banxico']) > 0:
+    if source in ["MX Banxico", "🔄 Combinar"] and series_dict.get('banxico') and len(series_dict['banxico']) > 0:
         df_banxico = get_banxico_data(
             series_ids=list(series_dict['banxico'].keys()),
             start_date=start.strftime('%Y-%m-%d'),
@@ -259,10 +265,11 @@ def load_data(source, series_dict, start, end):
             all_dfs.append(df_banxico)
 
     # FRED
-    if source in ["🇺🇸 FRED", "🔄 Combinar"] and series_dict.get('fred') and len(series_dict['fred']) > 0:
+    if source in ["US FRED", "🔄 Combinar"] and series_dict.get('fred') and len(series_dict['fred']) > 0:
         df_fred = get_fred_series(
             series_ids=list(series_dict['fred'].keys()),
-            start_date=start.strftime('%Y-%m-%d')
+            start_date=start.strftime('%Y-%m-%d'),
+            end_date=end.strftime('%Y-%m-%d')
         )
         if df_fred is not None and not df_fred.empty:
             # Solo columnas numéricas (quitar metadatos)
@@ -271,40 +278,50 @@ def load_data(source, series_dict, start, end):
             df_fred.columns = [series_dict['fred'].get(c, c) for c in df_fred.columns]
             all_dfs.append(df_fred)
 
-    # INEGI (CSV)
-    if source in ["🇲🇽 INEGI (CSV)", "🔄 Combinar"] and series_dict.get('inegi_csv') and len(series_dict['inegi_csv']) > 0:
-        for csv_series_id in series_dict['inegi_csv']:
-            CSV_FILE_PATH = "data/inegi_exportaciones_slp.csv"
-            df_inegi_csv = get_inegi_csv_data(
-                CSV_FILE_PATH, 
-                csv_series_id, 
-                start_date=start, 
-                end_date=end
-            )
-            if df_inegi_csv is not None and not df_inegi_csv.empty:
-                all_dfs.append(df_inegi_csv)
+    # INEGI (API) — Lógica Corregida
+    if source in ["MX INEGI", "🔄 Combinar"] and series_dict.get('inegi_api') and len(series_dict['inegi_api']) > 0:
+        try:
+            inegi_token = st.secrets["INEGI_TOKEN"]
+
+            for indicator_code in series_dict['inegi_api']:
+                # Llamamos a la función que definiste en data_extraction.py
+                df_inegi = get_inegi_api_data(
+                    token=inegi_token,
+                    indicator_code=indicator_code,
+                    state_code='24',  # Clave de San Luis Potosí
+                    start_date=start.strftime('%Y'),
+                    end_date=end.strftime('%Y')
+                )   
+                
+                # Validamos y agregamos los datos
+                if df_inegi is not None and not df_inegi.empty:
+                    all_dfs.append(df_inegi)
+                    st.success(f"✅ INEGI ({indicator_code}): {len(df_inegi)} observaciones")
+                    
+        except Exception as e:
+            st.warning(f"⚠️ Error consultando INEGI API: {e}")
 
     if all_dfs:
         df_combined = pd.concat(all_dfs, axis=1).sort_index()
         return clean_economic_data(df_combined)
 
-    return None
+    return None 
 
 # === Construir series_config de forma segura ===
 # === EXTRAER SERIES DIRECTAMENTE DESDE st.session_state ===
 # Esto funciona incluso si el multiselect no se mostró (gracias a key=)
 banxico_ids = st.session_state.get('banxico_series', [])
 fred_ids = st.session_state.get('fred_series', [])
-inegi_csv_ids = st.session_state.get('inegi_csv_series', [])
+inegi_api_ids = st.session_state.get('inegi_api_series', []) # <--- Actualizado
 
 banxico_ids = [s.strip() for s in banxico_ids if s and s.strip()]
 fred_ids = [s.strip() for s in fred_ids if s and s.strip()]
-inegi_csv_ids = [s.strip() for s in inegi_csv_ids if s and s.strip()]
+inegi_api_ids = [s.strip() for s in inegi_api_ids if s and s.strip()]
 
 series_dict = {
     'banxico': {sid: sid for sid in banxico_ids},
     'fred': {sid: sid for sid in fred_ids},
-    'inegi_csv': {sid: sid for sid in inegi_csv_ids}
+    'inegi_api': {sid: sid for sid in inegi_api_ids}
 }
 
 # Cargar datos
@@ -312,38 +329,61 @@ with st.spinner("🔄 Procesando datos..."):
     df = load_data(data_source, series_dict, start_date, end_date)
 
 # === NUEVO: Resamplear a frecuencia trimestral (Corrección Estructura.pdf) ===
+# =============================================================================
+# NUEVO: Lógica para conservar ambas frecuencias (Raw vs Trimestral)
+# =============================================================================
+df_trimestral = None
+
 if df is not None and not df.empty:
-    # Verificar si hay mezcla de frecuencias (muchos datos = probablemente diaria por Banxico/FRED)
-    if len(df) > 100: 
-        
-        # Definir reglas de agregación según el tipo de variable
+    # 1. Guardamos una copia de los datos originales para visualización
+    df_raw = df.copy()
+    
+    # 2. Creamos la versión trimestral para el modelo (sin sobrescribir df_raw)
+    if len(df_raw) > 100:
+        # Definir reglas de agregación
         agg_rules = {}
-        for col in df.columns:
+        for col in df_raw.columns:
             if 'SF43718' in col or 'DEXMXUS' in col or 'TC' in col.upper():
-                agg_rules[col] = 'mean'      # TC: Promedio trimestral (correcto para diarios)
+                agg_rules[col] = 'mean'
             elif 'EXP' in col.upper() or 'SLP' in col.upper() or 'INEGI' in col.upper():
-                # ⚠️ CORRECCIÓN CLAVE: Para INEGI ya trimestral, usamos 'last' o 'mean'
-                # NO USAR 'sum' porque duplicaría el valor si ya es un total trimestral
                 agg_rules[col] = 'last'      
             elif 'PIB' in col.upper() or 'GDP' in col.upper():
-                agg_rules[col] = 'last'      # PIB: Último valor del trimestre
+                agg_rules[col] = 'last'      
             else:
-                agg_rules[col] = 'mean'      # Por defecto
+                agg_rules[col] = 'mean'      
         
         try:
-            # Aplicar la conversión trimestral usando 'QE' (Quarter End) para Pandas >= 2.0
-            df_trimestral = df.resample('QE').agg(agg_rules).dropna()
-            
-            # Limpiar índice para visualización
+            # Generar trimestral
+            df_trimestral = df_raw.resample('QE').agg(agg_rules).dropna()
             df_trimestral.index = df_trimestral.index.to_period('Q').to_timestamp()
             
-            # Reemplazar df original
-            df = df_trimestral
-            
-            st.info(f"📊 Datos alineados a frecuencia trimestral: {len(df)} observaciones")
-            
+            st.success(f"🔄 Datos trimestrales generados: {len(df_trimestral)} observaciones (para modelo)")
         except Exception as e:
             st.warning(f"⚠️ Error al resamplear: {e}")
+            df_trimestral = df_raw # Fallback si falla
+    else:
+        # Si ya son pocos datos, asumimos que es trimestral
+        df_trimestral = df_raw
+
+    # 3. Selector de Visualización (UI)
+    st.divider()
+    view_mode = st.radio(
+        "👁️ ¿Qué datos deseas visualizar en las gráficas?",
+        options=["📈 Datos Originales (Diarios/Mensuales)", "📊 Datos Trimestrales (Consistentes)"],
+        index=1, # Default: Trimestral
+        horizontal=True
+    )
+    
+    # Variable que usaremos para las gráficas y stats
+    if "Trimestrales" in view_mode:
+        df_display = df_trimestral
+        st.caption("ℹ️ Visualizando datos trimestrales. El modelo econométrico usará esta frecuencia.")
+    else:
+        df_display = df_raw
+        st.caption("ℹ️ Visualizando datos originales. Nota: El modelo econométrico seguirá usando datos trimestrales para ser válido.")
+
+else:
+    df_display = df # Si no hay datos, usar lo que haya
 
 # =============================================================================
 # MANEJO DE ERRORES Y ESTADO VACÍO
@@ -432,8 +472,8 @@ with col_chart:
     # Selector de variables para graficar
     vars_to_plot = st.multiselect(
         "Selecciona variables:",
-        options=df.select_dtypes(include='number').columns.tolist(),
-        default=df.select_dtypes(include='number').columns.tolist()[:3]
+        options=df_display.select_dtypes(include='number').columns.tolist(),
+        default=df_display.select_dtypes(include='number').columns.tolist()[:3]
     )
     
     # === NUEVO: Opción para eje secundario ===
@@ -449,7 +489,7 @@ with col_chart:
     
     if vars_to_plot:
         fig_ts = plot_time_series(
-            df[vars_to_plot], 
+            df_display[vars_to_plot], 
             title="Serie Temporal de Indicadores",
             yaxis_title="Valor",
             secondary_y=secondary_y if secondary_y else None  # Pasar al gráfico
@@ -616,7 +656,7 @@ if show_regression and df is not None and not df.empty:
     st.subheader("📊 Modelo Econométrico (OLS Multivariable)")
 
     # === Paso 1: Procesar datos usando funciones modularizadas ===
-    df_with_logs = df.copy()
+    df_with_logs = df_trimestral.copy()
 
     # 1. Identificar columnas numéricas > 0 para logaritmos
     cols_for_log = [

@@ -130,14 +130,14 @@ def get_banxico_data(series_ids, start_date=None, end_date=None, token=None):
 # =============================================================================
 # CONEXIÓN FRED (Federal Reserve)
 # =============================================================================
-def get_fred_series(series_ids, api_key=None, start_date=None):
+def get_fred_series(series_ids, api_key=None, start_date=None, end_date=None):  # ← Agregar end_date
     """
     Extrae series económicas de FRED
     Args:
         series_ids: Lista de IDs (ej: ['GDP', 'CPIAUCSL', 'UNRATE'])
         api_key: API Key de FRED
         start_date: Fecha inicial
-
+        end_date: Fecha final  # ← Agregar
     Returns:
         DataFrame con múltiples series
     """
@@ -157,8 +157,13 @@ def get_fred_series(series_ids, api_key=None, start_date=None):
         for series_id in series_ids:
             try:
                 series = fred.get_series(series_id)
+                
+                # ✅ FILTROS POR FECHA COMPLETOS
                 if start_date:
                     series = series[series.index >= pd.to_datetime(start_date)]
+                if end_date:  # ← AGREGAR ESTO
+                    series = series[series.index <= pd.to_datetime(end_date)]
+                
                 df_series = series.to_frame(name=series_id)
 
                 # Agregar metadatos
@@ -167,7 +172,7 @@ def get_fred_series(series_ids, api_key=None, start_date=None):
                 df_series['unidades'] = series_info.units
                 df_series['frecuencia'] = series_info.frequency
 
-                df_list.append(df_series)
+                df_list.append(df_series)  # ← Corregir espacio en blanco
 
             except Exception as e:
                 st.warning(f"⚠️ No se pudo obtener {series_id}: {e}")
@@ -184,51 +189,40 @@ def get_fred_series(series_ids, api_key=None, start_date=None):
         st.error(f"❌ Error FRED: {str(e)}")
         return None
 
-# =============================================================================
-# CONEXIÓN INEGI (CSV LOCAL)
-# =============================================================================
-def get_inegi_csv_data(file_path: str, series_id: str, start_date=None, end_date=None) -> pd.DataFrame:
+# ==========================================
+# NUEVA FUNCIÓN: Conexión INEGI API (INEGIpy)
+# ==========================================
+def get_inegi_api_data(
+    token: str,
+    indicator_code: str,
+    state_code: str = '24',  # San Luis Potosí
+    start_date: str = None,
+    end_date: str = None
+) -> pd.DataFrame:
     """
-    Lee y filtra una serie temporal desde un archivo CSV local.
-    Soporta filtrado por rango de fechas.
+    Obtiene datos de INEGI usando la API oficial vía INEGIpy.
     """
     try:
-        df_raw = pd.read_csv(file_path, encoding='utf-8-sig')
-        df_raw.columns = df_raw.columns.str.strip()
-
-        # Detectar columnas (robusto)
-        col_fecha = next((col for col in df_raw.columns if 'periodo' in col.lower()), None)
-        col_valor = next((col for col in df_raw.columns if 'export' in col.lower() or 'slp' in col.lower() or 'valor' in col.lower()), None)
-
-        if not col_fecha or not col_valor:
-            st.error(f"❌ Columnas no encontradas. Esperaba 'Periodos' y 'Exportaciones...'. Columnas: {list(df_raw.columns)}")
-            return None
-
-        df_raw = df_raw.rename(columns={col_fecha: 'fecha', col_valor: 'valor'})
-        df_raw['fecha'] = pd.to_datetime(df_raw['fecha'], format='%Y/%m', errors='coerce')
-        df_raw = df_raw.dropna(subset=['fecha', 'valor'])
-        df_raw['valor'] = pd.to_numeric(df_raw['valor'], errors='coerce')
-        df_raw = df_raw.dropna(subset=['valor'])
-
-        df = df_raw.set_index('fecha')[['valor']].sort_index()
-        df.rename(columns={'valor': series_id}, inplace=True)
-
-        # Filtrar por rango de fechas (si se proporcionan)
-        if start_date is not None:
-            df = df[df.index >= pd.to_datetime(start_date)]
-        if end_date is not None:
-            df = df[df.index <= pd.to_datetime(end_date)]
-
-        # Si después del filtro está vacío, devolver None (no es error, solo sin datos en rango)
-        if df.empty:
-            st.warning(f"⚠️ No hay datos para '{series_id}' en el rango {start_date} – {end_date}")
-            return None
-
+        from INEGIpy import Indicadores
+        
+        # Inicializar cliente
+        inegi = Indicadores(token)
+        
+        # Consultar datos
+        df = inegi.obtener_df(
+            indicadores=indicator_code,
+            clave_area=state_code,
+            inicio=start_date,
+            fin=end_date,
+            metadatos=False
+        )
+        
+        # Renombrar columna para que coincida con tu dashboard
+        if not df.empty:
+            df.columns = ['EXP_SLP']
+            
         return df
-
-    except FileNotFoundError:
-        st.error(f"❌ Archivo CSV no encontrado: {file_path}")
-        return None
+        
     except Exception as e:
-        st.error(f"❌ Error al leer el CSV: {e}")
+        print(f"❌ Error consultando INEGI API: {e}")
         return None
