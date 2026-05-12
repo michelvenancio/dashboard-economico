@@ -684,12 +684,11 @@ if show_regression and df is not None and not df.empty:
         st.warning("⚠️ Seleccione una variable dependiente y al menos una independiente.")
 
 
-# === Diagnóstico del modelo (versión robusta) ===
+#=== Diagnóstico del modelo (versión robusta) ===
 if 'diagnostics' in result:
     diag = result['diagnostics']
-    
     st.markdown("##### 📊 Pruebas de supuestos")
-    
+
     # Verificar que los valores existan
     bp_p = diag.get('bp_p', None)
     jb_p = diag.get('jb_p', None)
@@ -697,29 +696,57 @@ if 'diagnostics' in result:
     vif_df = diag.get('vif', pd.DataFrame(columns=['feature', 'VIF']))
 
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
+        # Obtenemos el valor; si no existe, será None
+        p_value_tc = diag['p_values'].get('ln_SF43718')
+        
+        # Verificamos si es un número válido antes de formatear
+        if p_value_tc is not None and isinstance(p_value_tc, (int, float)):
+            p_value_str = f"{p_value_tc:.4f}"
+            # Lógica para el delta (verde si es significativo)
+            delta_status = "✅ < 0.05" if p_value_tc < 0.05 else "⚠️ ≥ 0.05"
+        else:
+            p_value_str = "N/A"
+            delta_status = "⚠️ No incluida"
+        
         st.metric(
             "p-value β₁ (TC)",
-            f"{diag['p_values'].get('ln_SF43718', 'N/A'):.4f}",
-            delta="✅ < 0.05" if diag['p_values'].get('ln_SF43718', 1) < 0.05 else "⚠️ ≥ 0.05",
-            help="Significancia del coeficiente principal"
+            p_value_str,
+            delta=delta_status,
+            help="Significancia del coeficiente del Tipo de Cambio"
         )
-    
+
     with col2:
+        # VIF para TC
+        if 'ln_SF43718' in vif_df['feature'].values:
+            vif_val = vif_df.loc[vif_df['feature'] == 'ln_SF43718', 'VIF'].iloc[0]
+            vif_str = f"{vif_val:.2f}"
+            vif_delta = "✅ < 5" if vif_val < 5 else "⚠️ > 5"
+        else:
+            vif_str = "N/A"
+            vif_delta = "⚠️ No incluida"
+            
         st.metric(
             "VIF (TC)",
-            f"{vif_df.loc[vif_df['feature'] == 'ln_SF43718', 'VIF'].iloc[0]:.2f}" 
-            if 'ln_SF43718' in vif_df['feature'].values else "N/A",
-            delta="✅ < 5" if vif_df.loc[vif_df['feature'] == 'ln_SF43718', 'VIF'].iloc[0] < 5 else "⚠️ > 5",
+            vif_str,
+            delta=vif_delta,
             help="Multicolinealidad (VIF > 10 es problemático)"
         )
-    
+
     with col3:
+        # Durbin-Watson
+        if dw_stat is not None and isinstance(dw_stat, (int, float)):
+            dw_str = f"{dw_stat:.2f}"
+            dw_delta = "✅ ≈2.0" if 1.5 < dw_stat < 2.5 else "⚠️ Autocorrelación"
+        else:
+            dw_str = "N/A"
+            dw_delta = "⚠️ No disponible"
+            
         st.metric(
             "Durbin-Watson",
-            f"{dw_stat:.2f}" if dw_stat is not None else "N/A",
-            delta="✅ ≈2.0" if dw_stat is not None and 1.5 < dw_stat < 2.5 else "⚠️ Autocorrelación",
+            dw_str,
+            delta=dw_delta,
             help="Valores cercanos a 2 indican ausencia de autocorrelación"
         )
 
