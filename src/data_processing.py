@@ -169,3 +169,27 @@ def add_post_2020_dummy(df: pd.DataFrame, date_col: str = None) -> pd.DataFrame:
     
     df["DPOST_2020"] = (fechas >= pd.Timestamp("2020-01-01")).astype(int)
     return df
+
+def resample_to_quarterly(df: pd.DataFrame, agg_rules: dict) -> pd.DataFrame:
+    """
+    Convierte DataFrame a frecuencia trimestral con reglas de agregación personalizadas.
+    
+    Args:
+        df: DataFrame con índice datetime
+        agg_rules: Dict {columna: función_de_agregación}
+                   Ej: {'SF43718': 'mean', 'EXP_SLP': 'sum', 'GDPC1': 'last'}
+    
+    Returns:
+        DataFrame con frecuencia trimestral
+    """
+    # Asegurar índice datetime
+    if not pd.api.types.is_datetime64_any_dtype(df.index):
+        df.index = pd.to_datetime(df.index)
+    
+    # Resamplear a trimestral ('Q' = final de trimestre)
+    df_q = df.resample('Q').agg(agg_rules).dropna()
+    
+    # Cambiar a frecuencia de período trimestral (opcional, pero más limpio)
+    df_q.index = df_q.index.to_period('Q').to_timestamp()
+    
+    return df_q

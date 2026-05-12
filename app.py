@@ -98,7 +98,8 @@ def metric_card(title: str, value: str, delta: float = None, icon: str = "📈")
 from src.data_extraction import get_banxico_data, get_fred_series, get_inegi_csv_data  # Añadido get_inegi_csv_data si lo usas aquí
 from src.data_processing import (
     clean_economic_data, calculate_returns, add_technical_indicators,
-    apply_log_transform, add_volatility_column, add_post_2020_dummy  # Añadidas nuevas funciones
+    apply_log_transform, add_volatility_column, add_post_2020_dummy,
+    resample_to_quarterly
 )
 from src.models import (
     fit_arima_model, test_stationarity,
@@ -309,6 +310,39 @@ series_dict = {
 # Cargar datos
 with st.spinner("🔄 Procesando datos..."):
     df = load_data(data_source, series_dict, start_date, end_date)
+
+# === NUEVO: Resamplear a frecuencia trimestral ===
+if df is not None and not df.empty:
+    # Verificar si hay mezcla de frecuencias (diaria + trimestral)
+    if len(df) > 100:  # Si hay muchas observaciones, probablemente es diaria
+        
+        # Definir reglas de agregación por tipo de variable
+        agg_rules = {}
+        
+        for col in df.columns:
+            if 'SF43718' in col or 'DEXMXUS' in col or 'TC' in col.upper():
+                # Tipo de cambio: promedio trimestral
+                agg_rules[col] = 'mean'
+            elif 'EXP' in col.upper() or 'EXPORT' in col.upper():
+                # Exportaciones: suma (es un flujo)
+                agg_rules[col] = 'sum'
+            elif 'PIB' in col.upper() or 'GDP' in col.upper():
+                # PIB: último valor del trimestre
+                agg_rules[col] = 'last'
+            elif 'CPI' in col.upper() or 'INPC' in col.upper() or 'UNRATE' in col.upper():
+                # Índices y tasas: último valor
+                agg_rules[col] = 'last'
+            elif 'vol' in col.lower() or 'VOL' in col.upper():
+                # Volatilidad: promedio
+                agg_rules[col] = 'mean'
+            else:
+                # Por defecto: promedio
+                agg_rules[col] = 'mean'
+        
+        # Aplicar resampleo
+        df = resample_to_quarterly(df, agg_rules)
+        
+        st.info(f"📊 Datos convertidos a frecuencia trimestral: {len(df)} observaciones")
 
 # =============================================================================
 # MANEJO DE ERRORES Y ESTADO VACÍO
