@@ -197,6 +197,17 @@ with st.sidebar:
 
     st.divider()
 
+# --- NUEVO: Selector de transformación ---
+    st.subheader("⚙️ Transformación de Datos")
+    transformation_mode = st.radio(
+        "Selecciona el tipo de transformación para el análisis:",
+        options=["Logaritmos (log)", "Niveles (nivel)"],
+        index=0,  # Por defecto: logaritmos
+        horizontal=True,
+        key="trans_mode"
+    )
+    st.caption("💡 Los logaritmos permiten interpretar coeficientes como elasticidades. Los niveles muestran cambios absolutos.")
+
     # Series disponibles — definir opciones limpias (sin espacios)
     banxico_options = {
         "SF43718": "Tipo de Cambio USD/MXN (Fix)",
@@ -717,74 +728,97 @@ if show_forecast:
 if show_regression and df is not None and not df.empty:
     st.subheader("📊 Modelo Econométrico (OLS Multivariable)")
 
-    # === Paso 1: Procesar datos usando funciones modularizadas ===
-    df_with_logs = df_trimestral.copy()
+   # === Paso 1: Procesar datos según modo de transformación ===
+df_analysis = df.copy()  # Empezamos con los datos originales
 
-    # 1. Identificar columnas numéricas > 0 para logaritmos
+# 1. Aplicar logaritmos SOLO si se seleccionó "Logaritmos"
+if transformation_mode == "Logaritmos (log)":
+    # Identificar columnas numéricas > 0 para logaritmos
     cols_for_log = [
-        col for col in df.select_dtypes(include='number').columns 
+        col for col in df.select_dtypes(include='number').columns
         if col != 'fecha' and df[col].min() > 0
     ]
+    # Aplicar transformación
+    for col in cols_for_log:
+        if col in df_analysis.columns:
+            df_analysis[f"ln_{col}"] = np.log(df_analysis[col])
+    # Renombrar para facilitar selección posterior
+    prefix = "ln_"
+else:  # transformation_mode == "Niveles (nivel)"
+    prefix = ""  # No se añade prefijo
 
-    # 2. Aplicar transformaciones usando funciones de data_processing
-    df_with_logs = apply_log_transform(df_with_logs, cols=cols_for_log)
+# 2. Agregar volatilidad y dummy (siempre en la serie original, no en log)
+if 'SF43718' in df.columns:  # Usar la columna original para volatilidad
+    df_analysis = add_volatility_column(df_analysis, col='SF43718', window=4)
+df_analysis = add_post_2020_dummy(df_analysis, date_col='fecha')
 
-    if 'SF43718' in df_display.columns:
-        df_with_logs = add_volatility_column(df_with_logs, col='SF43718', window=4)
+# 3. Asegurar frecuencia válida (solo si es necesario)
+if not hasattr(df_analysis.index, 'freq') or df_analysis.index.freq is None:
+    try:
+        df_analysis = df_analysis.asfreq('ME')
+    except Exception:
+        df_analysis = df_analysis.asfreq('M')  # Fallback
 
-    df_with_logs = add_post_2020_dummy(df_with_logs, date_col=None)  # None = usar índice
+# Ahora df_analysis contiene las variables listas para el análisis
+# (en logaritmos o en niveles, según la elección del usuario)
 
-    # 3. Asegurar frecuencia válida (pandas ≥ 2.0)
-    if not hasattr(df_with_logs.index, 'freq') or df_with_logs.index.freq is None:
-        try:
-            df_with_logs = df_with_logs.asfreq('ME')
-        except:
-            df_with_logs = df_with_logs.asfreq('M')  # Fallback para pandas antiguos
+    # === Paso 2: Seleccionar variables (adaptado al modo) ===
+    all_cols = df_analysis.select_dtypes(include='number').columns.tolist()
 
-    # === Paso 2: Seleccionar variables
-    all_cols = df_with_logs.select_dtypes(include='number').columns.tolist()
-
-    # Variable dependiente: buscar columnas con 'exp' o 'slp'
+    # Variable dependiente: buscar columnas con 'exp', 'slp', 'export'
     y_candidates = [c for c in all_cols if 'exp' in c.lower() or 'slp' in c.lower() or 'export' in c.lower()]
-    y_options = [c for c in y_candidates if 'ln_' in c]  # prioriza logaritmos
+    # Priorizar según modo
+    if transformation_mode == "Logaritmos (log)":
+        y_options = [c for c in y_candidates if prefix in c]  # solo ln_*
+    else:
+        y_options = y_candidates  # todos los candidatos en niveles
+
     if not y_options:
         y_options = y_candidates
     if not y_options and all_cols:
         y_options = [all_cols[0]]
 
     y_var = st.selectbox(
-        "Variable dependiente (ln):",
+        f"Variable dependiente ({'log' if transformation_mode == 'Logaritmos (log)' else 'nivel'}):",
         options=y_options,
         index=0 if y_options else 0,
-        disabled=len(y_options) == 0
+        disabled=len(y_options) == 0,
+        key="y_var_select"
     )
 
     # Variables independientes
     x_options = [c for c in all_cols if c != y_var] if y_var else all_cols[1:]
     x_vars = st.multiselect(
-        "Variables independientes:",
+        f"Variables independientes ({'log' if transformation_mode == 'Logaritmos (log)' else 'nivel'}):",
         options=x_options,
-        default=[c for c in x_options if 'ln_' in c or 'vol' in c.lower() or 'DPOST' in c]
+        default=[c for c in x_options if prefix in c or 'vol' in c.lower() or 'DPOST' in c],
+        key="x_vars_multiselect"
     )
 
     # === Paso 3: Estimar modelo
     if y_var and x_vars:
         try:
-            result = multiple_regression(df_with_logs, y_var, x_vars)
+            result = multiple_regression(df_analysis, y_var, x_vars)
             if 'error' in result:
                 st.error(f"❌ Error en modelo: {result['error']}")
             else:
                 # Mostrar resultados
-                st.markdown("##### 📈 Coeficientes (Elasticidades)")
+                st.markdown("##### 📈 Coeficientes")
                 for var, coef in result['coefficients'].items():
                     if var != 'const':
                         text = f"**{var}**: {coef:+.4f}"
-                        if 'ln_' in y_var and 'ln_' in var:
+                        # Solo añadir "→ Elasticidad" si estamos en modo logaritmos Y ambas variables tienen 'ln_'
+                        if (transformation_mode == "Logaritmos (log)" and 
+                            'ln_' in y_var and 'ln_' in var):
                             text += " → Elasticidad"
                         st.caption(text)
 
                 st.metric("R²", f"{result['r2']:.3f}")
-                st.metric("RMSE", f"{result['rmse']:.4f}")
+                st.metric(
+                    "RMSE",
+                    f"{result['rmse']:.4f}",
+                    help="En logaritmos: adimensional. En niveles: unidades de la variable dependiente."
+                )
 
             # === NUEVO: Prueba de Cointegración (Engle-Granger) ===
             # Verifica si los residuos del modelo son estacionarios (relación de largo plazo)
@@ -885,7 +919,7 @@ if 'diagnostics' in result:
     # Gráfica de residuos (solo si está definida y hay datos)
     try:
         if 'residuals' in result:
-            fig_resid = plot_residuals(result['residuals'], df_with_logs.index)
+            fig_resid = plot_residuals(result['residuals'], df_analysis.index)
             st.plotly_chart(fig_resid, use_container_width=True)
         else:
             st.info("📊 Residuos no disponibles para gráfica.")
@@ -897,7 +931,7 @@ st.subheader("📈 Relación Marginal Dinámica")
 col_y, col_x, col_btn = st.columns([2, 2, 1])
 
 with col_y:
-    y_options = [c for c in df_with_logs.columns if c != 'fecha' and df_with_logs[c].dtype in ['float64', 'int64']]
+    y_options = [c for c in df_analysis.columns if c != 'fecha' and df_analysis[c].dtype in ['float64', 'int64']]
     y_var_scatter = st.selectbox(
         "Variable dependiente (Y)",
         options=y_options,
@@ -906,7 +940,7 @@ with col_y:
     )
 
 with col_x:
-    x_options = [c for c in df_with_logs.columns if c != y_var_scatter and c != 'fecha' and df_with_logs[c].dtype in ['float64', 'int64']]
+    x_options = [c for c in df_analysis.columns if c != y_var_scatter and c != 'fecha' and df_analysis[c].dtype in ['float64', 'int64']]
     x_var_scatter = st.selectbox(
         "Variable independiente (X)",
         options=x_options,
@@ -922,7 +956,7 @@ with col_btn:
 # Generar gráfica solo si hay selección válida
 if y_var_scatter and x_var_scatter:
     try:
-        fig = plot_scatter_dynamic(df_with_logs, y_col=y_var_scatter, x_col=x_var_scatter)
+        fig = plot_scatter_dynamic(df_analysis, y_col=y_var_scatter, x_col=x_var_scatter)
         if fig is not None:
             st.plotly_chart(fig, use_container_width=True)
         else:
