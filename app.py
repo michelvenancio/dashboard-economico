@@ -144,8 +144,7 @@ from src.models import (
 from src.visualization import (
     plot_time_series, plot_correlation_heatmap,
     plot_indicators_cards, create_dashboard_layout,
-    plot_log_scatter, plot_residuals, plot_forecast,
-    plot_scatter_dynamic # Añadidas nuevas funciones
+    plot_log_scatter, plot_residuals, plot_forecast,plot_scatter_dynamic # Añadidas nuevas funciones
 )
 
 # =============================================================================
