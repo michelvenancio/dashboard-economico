@@ -80,6 +80,38 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+/* Mejorar métricas */
+.stMetric {
+    background: linear-gradient(135deg, var(--dark-alt) 0%, rgba(255,107,53,0.1) 100%);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid rgba(255, 107, 53, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+}
+
+.stMetric:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(255, 107, 53, 0.2);
+}
+
+.stMetric label {
+    font-size: 0.85em;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stMetric div[data-testid="stMetricValue"] {
+    font-size: 2em;
+    font-weight: 700;
+    color: var(--light);
+}
+</style>
+""", unsafe_allow_html=True)
+
 # === FUNCIÓN DE TARJETA DE KPI PERSONALIZADA ===
 def metric_card(title: str, value: str, delta: float = None, icon: str = "📈"):
     """delta debe ser número (no string)"""
@@ -332,7 +364,13 @@ with st.spinner("🔄 Procesando datos..."):
 # =============================================================================
 # NUEVO: Lógica para conservar ambas frecuencias (Raw vs Trimestral)
 # =============================================================================
+
+# Inicializar view_mode en session_state si no existe
+if 'view_mode' not in st.session_state:
+    st.session_state.view_mode = "trimestrales"  # Default
+
 df_trimestral = None
+df_display = df  # Por defecto, usar los datos originales
 
 if df is not None and not df.empty:
     # 1. Guardamos una copia de los datos originales para visualización
@@ -360,30 +398,35 @@ if df is not None and not df.empty:
             st.success(f"🔄 Datos trimestrales generados: {len(df_trimestral)} observaciones (para modelo)")
         except Exception as e:
             st.warning(f"⚠️ Error al resamplear: {e}")
-            df_trimestral = df_raw # Fallback si falla
+            df_trimestral = df_raw  # Fallback si falla
     else:
         # Si ya son pocos datos, asumimos que es trimestral
         df_trimestral = df_raw
 
-    # 3. Selector de Visualización (UI)
+    # 3. Selector de Visualización (UI) - CORREGIDO
     st.divider()
-    view_mode = st.radio(
+    
+    view_option = st.radio(
         "👁️ ¿Qué datos deseas visualizar en las gráficas?",
         options=["📈 Datos Originales (Diarios/Mensuales)", "📊 Datos Trimestrales (Consistentes)"],
-        index=1, # Default: Trimestral
-        horizontal=True
+        index=0 if st.session_state.view_mode == "originales" else 1,
+        horizontal=True,
+        key="view_mode_radio"  # Clave única para evitar conflictos
     )
     
-    # Variable que usaremos para las gráficas y stats
-    if "Trimestrales" in view_mode:
+    # Actualizar session_state basado en la selección
+    if "Trimestrales" in view_option:
+        st.session_state.view_mode = "trimestrales"
         df_display = df_trimestral
         st.caption("ℹ️ Visualizando datos trimestrales. El modelo econométrico usará esta frecuencia.")
     else:
+        st.session_state.view_mode = "originales"
         df_display = df_raw
         st.caption("ℹ️ Visualizando datos originales. Nota: El modelo econométrico seguirá usando datos trimestrales para ser válido.")
 
 else:
-    df_display = df # Si no hay datos, usar lo que haya
+    df_display = df if df is not None else None
+    df_trimestral = None
 
 # =============================================================================
 # MANEJO DE ERRORES Y ESTADO VACÍO
@@ -408,9 +451,9 @@ st.subheader("📌 Indicadores Clave")
 
 # Calcular métricas dinámicas
 metrics = {}
-for col in df.select_dtypes(include='number').columns:
-    latest = df[col].iloc[-1]
-    prev = df[col].iloc[-2] if len(df) > 1 else latest
+for col in df_display.select_dtypes(include='number').columns:
+    latest = df_display[col].iloc[-1]
+    prev = df_display[col].iloc[-2] if len(df_display) > 1 else latest
     change = ((latest - prev) / prev * 100) if prev != 0 else 0
     
     # Determinar unidad
@@ -501,7 +544,7 @@ with col_stats:
     
     # Resumen estadístico
     st.dataframe(
-        df[vars_to_plot].describe().round(2),
+        df_display[vars_to_plot].describe().round(2),
         use_container_width=True,
         hide_index=True
     )
@@ -510,38 +553,57 @@ with col_stats:
     if len(vars_to_plot) > 0:
         st.markdown("##### 🧪 Prueba ADF")
         for col in vars_to_plot[:2]:  # Limitar a 2 para no saturar
-            result = test_stationarity(df[col].dropna())
+            result = test_stationarity(df_display[col].dropna())
             status = "✅ Estacionaria" if result['is_stationary'] else "❌ No estacionaria"
             st.caption(f"{col}: {status} (p={result['p_value']:.3f})")
 
 # =============================================================================
 # ANÁLISIS AVANZADO
 # =============================================================================
-if show_correlation and len(df.select_dtypes(include='number').columns) > 1:
+if show_correlation and len(df_display.select_dtypes(include='number').columns) > 1:
     st.subheader("🔗 Análisis de Correlación")
-    fig_corr = plot_correlation_heatmap(df, title="Matriz de Correlación de Pearson")
+    fig_corr = plot_correlation_heatmap(df_display, title="Matriz de Correlación de Pearson")
     st.plotly_chart(fig_corr, use_container_width=True)
 
 # =============================================================================
 # PRONÓSTICO ARIMA
 # =============================================================================
 if show_forecast:
-    st.subheader("🔮 Pronóstico con ARIMA")
+    st.markdown("""
+    <div style="
+        background: linear-gradient(135deg, rgba(255,107,53,0.1) 0%, rgba(18,24,38,0.8) 100%);
+        border-radius: 16px;
+        padding: 24px;
+        margin: 20px 0;
+        border: 1px solid rgba(255,107,53,0.2);
+    ">
+        <h2 style="margin-top: 0; color: var(--primary);">
+            🔮 Pronóstico con ARIMA
+        </h2>
+    </div>
+    """, unsafe_allow_html=True)
     
     col_model, col_plot = st.columns([1, 2])
     
     with col_model:
-        forecast_var = st.selectbox(
-            "Variable a pronosticar:",
-            options=df.select_dtypes(include='number').columns.tolist()
-        )
-        
-        # === MODO MANUAL vs AUTOMÁTICO ===
-        optimization_mode = st.radio(
-            "📊 Método de selección:",
-            options=["🎯 Manual", "🤖 Automático (Grid Search)"],
-            index=1  # Default: Automático
-        )
+        with st.container():
+            st.markdown('<div style="background: var(--dark-alt); padding: 20px; border-radius: 12px;">', 
+                       unsafe_allow_html=True)
+            
+            forecast_var = st.selectbox(
+                "Variable a pronosticar:",
+                options=df.select_dtypes(include='number').columns.tolist(),
+                label_visibility="collapsed"
+            )
+            
+            st.divider()
+            
+            optimization_mode = st.radio(
+                "📊 Método de selección:",
+                options=["🎯 Manual", "🤖 Automático (Grid Search)"],
+                index=1,
+                label_visibility="collapsed"
+            )
         
         if optimization_mode == "🎯 Manual":
             # Modo manual (parámetros fijos)
@@ -571,7 +633,7 @@ if show_forecast:
                 if optimization_mode == "🤖 Automático (Grid Search)":
                     # Usar optimización automática
                     result = auto_arima_optimization(
-                        df[forecast_var].dropna(),
+                        df_display[forecast_var].dropna(),
                         max_p=max_p,
                         max_d=max_d,
                         max_q=max_q,
@@ -591,7 +653,7 @@ if show_forecast:
                 else:
                     # Usar modo manual
                     result = fit_arima_model(
-                        df[forecast_var].dropna(),
+                        df_display[forecast_var].dropna(),
                         order=order,
                         forecast_steps=steps
                     )
@@ -616,7 +678,7 @@ if show_forecast:
                 st.stop()
         
             fig_fc = plot_forecast(
-                actual=df[var],
+                actual=df_display[var],
                 forecast=res['forecast'],
                 conf_int=res['conf_int'],
                 title=f"Pronóstico ARIMA({res.get('order', 'N/A')}) - {var}"
@@ -648,7 +710,7 @@ if show_forecast:
                     top_models = res['all_results'].head(5)[['order', 'aic', 'bic']].copy()
                     top_models['order'] = top_models['order'].astype(str)
                     st.dataframe(top_models.round(2), use_container_width=True)
-
+            st.markdown('</div>', unsafe_allow_html=True)
 # =============================================================================
 # REGRESIÓN LINEAL (OPCIONAL)
 # =============================================================================
@@ -667,7 +729,7 @@ if show_regression and df is not None and not df.empty:
     # 2. Aplicar transformaciones usando funciones de data_processing
     df_with_logs = apply_log_transform(df_with_logs, cols=cols_for_log)
 
-    if 'SF43718' in df.columns:
+    if 'SF43718' in df_display.columns:
         df_with_logs = add_volatility_column(df_with_logs, col='SF43718', window=4)
 
     df_with_logs = add_post_2020_dummy(df_with_logs, date_col=None)  # None = usar índice
