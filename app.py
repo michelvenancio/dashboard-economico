@@ -144,7 +144,8 @@ from src.models import (
 from src.visualization import (
     plot_time_series, plot_correlation_heatmap,
     plot_indicators_cards, create_dashboard_layout,
-    plot_log_scatter, plot_residuals, plot_forecast  # Añadidas nuevas funciones
+    plot_log_scatter, plot_residuals, plot_forecast,
+    plot_scatter_dynamic # Añadidas nuevas funciones
 )
 
 # =============================================================================
@@ -812,7 +813,6 @@ if show_regression and df is not None and not df.empty:
     else:
         st.warning("⚠️ Seleccione una variable dependiente y al menos una independiente.")
 
-
 #=== Diagnóstico del modelo (versión robusta) ===
 if 'diagnostics' in result:
     diag = result['diagnostics']
@@ -827,23 +827,27 @@ if 'diagnostics' in result:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        # Obtenemos el valor; si no existe, será None
-        p_value_tc = diag['p_values'].get('ln_SF43718')
-        
-        # Verificamos si es un número válido antes de formatear
+        # === Verificar que diagnostics exista y tenga p_values ===
+        diag = result.get('diagnostics', {})
+        p_values = diag.get('p_values', {})
+
+            # Obtener p-value para ln_SF43718 (si existe)
+        p_value_tc = p_values.get('ln_SF43718', None)
+
+            # Formatear texto de significancia
         if p_value_tc is not None and isinstance(p_value_tc, (int, float)):
-            p_value_str = f"{p_value_tc:.4f}"
-            # Lógica para el delta (verde si es significativo)
             delta_status = "✅ < 0.05" if p_value_tc < 0.05 else "⚠️ ≥ 0.05"
+            p_value_str = f"{p_value_tc:.4f}"
         else:
             p_value_str = "N/A"
-            delta_status = "⚠️ No incluida"
-        
+            delta_status = "N/A"
+
+            # Mostrar métrica
         st.metric(
             "p-value β₁ (TC)",
             p_value_str,
             delta=delta_status,
-            help="Significancia del coeficiente del Tipo de Cambio"
+            help="Significancia estadística del coeficiente del tipo de cambio"
         )
 
     with col2:
@@ -888,8 +892,47 @@ if 'diagnostics' in result:
             st.info("📊 Residuos no disponibles para gráfica.")
     except Exception as e:
         st.warning(f"⚠️ No se pudo generar gráfica de residuos: {e}")
+    # === Gráfica dinámica: Relación marginal personalizada ===
+st.subheader("📈 Relación Marginal Dinámica")
+
+col_y, col_x, col_btn = st.columns([2, 2, 1])
+
+with col_y:
+    y_options = [c for c in df_with_logs.columns if c != 'fecha' and df_with_logs[c].dtype in ['float64', 'int64']]
+    y_var_scatter = st.selectbox(
+        "Variable dependiente (Y)",
+        options=y_options,
+        key="y_scatter",
+        index=0 if y_options else 0
+    )
+
+with col_x:
+    x_options = [c for c in df_with_logs.columns if c != y_var_scatter and c != 'fecha' and df_with_logs[c].dtype in ['float64', 'int64']]
+    x_var_scatter = st.selectbox(
+        "Variable independiente (X)",
+        options=x_options,
+        key="x_scatter",
+        index=0 if x_options else 0
+    )
+
+with col_btn:
+    st.write("")  # espacio vertical
+    if st.button("🔄 Actualizar gráfica", use_container_width=True, key="btn_scatter"):
+        st.rerun()
+
+# Generar gráfica solo si hay selección válida
+if y_var_scatter and x_var_scatter:
+    try:
+        fig = plot_scatter_dynamic(df_with_logs, y_col=y_var_scatter, x_col=x_var_scatter)
+        if fig is not None:
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No hay datos suficientes para graficar esta combinación.")
+    except Exception as e:
+        st.error(f"❌ Error al generar gráfica: {e}")
 else:
     st.info("ℹ️ El modelo no incluye diagnóstico. Asegúrese de que `multiple_regression` devuelva `'diagnostics'`.")
+
 
 # =============================================================================
 # FOOTER Y CRÉDITOS

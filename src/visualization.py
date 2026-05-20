@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
+import streamlit as st
 
 
 def create_dashboard_layout():
@@ -397,4 +398,53 @@ def plot_forecast(actual: pd.Series, forecast: np.ndarray, conf_int=None, title:
         margin=dict(t=50, b=50, l=50, r=30)
     )
 
+    return fig
+
+def plot_scatter_dynamic(df: pd.DataFrame, y_col: str, x_col: str) -> go.Figure:
+    """
+    Gráfica dinámica de dispersión con ajuste lineal entre dos variables seleccionadas.
+    """
+    # Limpiar NaN
+    df_clean = df[[x_col, y_col]].dropna()
+    if df_clean.empty:
+        return None
+
+    x = df_clean[x_col].values
+    y = df_clean[y_col].values
+
+    # Ajuste lineal
+    coeffs = np.polyfit(x, y, 1)
+    y_fit = np.polyval(coeffs, x)
+    r_squared = 1 - (np.sum((y - y_fit) ** 2) / np.sum((y - np.mean(y)) ** 2))
+
+    fig = go.Figure()
+
+    # Datos
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=y,
+        mode='markers',
+        name='Datos',
+        marker=dict(color='blue', opacity=0.7, size=6)
+    ))
+
+    # Ajuste
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=y_fit,
+        mode='lines',
+        name=f'Ajuste (β={coeffs[0]:+.3f}, R²={r_squared:.3f})',
+        line=dict(color='red', width=2, dash='dash')
+    ))
+
+    fig.update_layout(
+        title=f"Relación: {y_col} vs {x_col}",
+        xaxis_title=x_col,
+        yaxis_title=y_col,
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color="#C5CAE9"),
+        hovermode="closest"
+    )
     return fig
