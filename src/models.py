@@ -3,12 +3,10 @@ Módulo con modelos estadísticos y econométricos
 """
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 import statsmodels.api as sm
 from statsmodels.stats.stattools import durbin_watson
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.stattools import adfuller
-from sklearn.linear_model import LinearRegression
 from statsmodels.stats.diagnostic import het_breuschpagan
 from statsmodels.stats.stattools import jarque_bera
 from statsmodels.stats.outliers_influence import variance_inflation_factor
@@ -115,7 +113,8 @@ def model_diagnostics(model, X, residuals):
     try:
         bp_test = het_breuschpagan(residuals, X_no_const)
         bp_p = bp_test[1]
-    except:
+    except Exception as e:
+        print(f"⚠️ Breusch-Pagan falló: {e}")
         bp_p = None
 
     # 4. Jarque-Bera
@@ -167,14 +166,11 @@ def auto_arima_optimization(series, max_p=3, max_d=2, max_q=3, forecast_steps=12
                     if not np.isfinite(model_fit.aic):
                         continue
                     
-                    results.append({
-                        'order': (p, d, q),
-                        'aic': model_fit.aic,
-                        'bic': model_fit.bic,
-                        'model': model_fit,
-                        'converged': True
-                    })
+                    results.append({'order': (p, d, q), 'aic': model_fit.aic, 'bic': model_fit.bic,})
                     
+                    best_order = min(results, key=lambda r: r["aic"])["order"]
+                    best_model = ARIMA(series.dropna(), order=best_order).fit()
+
                 except Exception:
                     # Si no converge, saltar
                     continue
@@ -218,7 +214,6 @@ def check_cointegration(df, y_col, x_cols):
         residuals = model.resid
         
         # 3. Aplicar prueba ADF a los residuos
-        from statsmodels.tsa.stattools import adfuller
         result = adfuller(residuals, autolag='AIC')
         
         p_value = result[1]

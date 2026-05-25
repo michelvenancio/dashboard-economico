@@ -1,10 +1,8 @@
 """
 Módulo para extracción de datos desde APIs: Banxico y FRED
-INEGI ha sido removido de este script.
+Incluye conexión a Banxico, FRED e INEGI (INEGIpy).
 """
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import streamlit as st
 
 
@@ -108,7 +106,10 @@ def get_banxico_data(series_ids, start_date=None, end_date=None, token=None):
             df = pd.DataFrame(data_list)
 
             if len(df) > 0:
-                df = df.pivot(index='fecha', columns='serie_id', values='valor')
+                df = df.pivot_table(
+                    index='fecha', columns='serie_id',
+                    values='valor', aggfunc='mean'
+                )
 
             return df
 
@@ -225,4 +226,4 @@ def get_inegi_api_data(
         
     except Exception as e:
         print(f"❌ Error consultando INEGI API: {e}")
-        return None
+        return pd.DataFrame()
