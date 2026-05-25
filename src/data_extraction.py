@@ -22,8 +22,7 @@ def get_banxico_data(series_ids, start_date=None, end_date=None, token=None):
             token = st.secrets.get("BANXICO_TOKEN")
 
         if not token:
-            st.error("❌ Token de Banxico no configurado")
-            return None
+            raise ValueError("Token de Banxico no configurado")
 
         # Inicializar API (forma correcta)
         banxico_api = BanxicoApi(token)

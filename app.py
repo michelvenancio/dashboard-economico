@@ -6,7 +6,6 @@ Fundamentos de Análisis de Datos - Proyecto Final
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 
 # === STYLING: Diseño al estilo Data México ===
 st.markdown("""
@@ -133,9 +132,7 @@ from src.data_extraction import (
     get_inegi_api_data
 )    # Añadido get_inegi_api_data si lo usas aquí
 from src.data_processing import (
-    clean_economic_data, calculate_returns, add_technical_indicators,
-    apply_log_transform, add_volatility_column, add_post_2020_dummy,
-    resample_to_quarterly
+    clean_economic_data, add_volatility_column, add_post_2020_dummy
 )
 from src.models import (
     fit_arima_model, test_stationarity,
@@ -143,8 +140,7 @@ from src.models import (
 )
 from src.visualization import (
     plot_time_series, plot_correlation_heatmap,
-    plot_indicators_cards, create_dashboard_layout,
-    plot_log_scatter, plot_residuals, plot_forecast,plot_scatter_dynamic # Añadidas nuevas funciones
+    plot_residuals, plot_forecast,plot_scatter_dynamic # Añadidas nuevas funciones
 )
 
 # =============================================================================
