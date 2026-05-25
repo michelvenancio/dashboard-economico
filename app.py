@@ -937,11 +937,12 @@ with col_y:
 
 with col_x:
     x_options = [c for c in df_analysis.columns if c != y_var_scatter and c != 'fecha' and df_analysis[c].dtype in ['float64', 'int64']]
-    x_var_scatter = st.selectbox(
-        "Variable independiente (X)",
+    
+    x_vars_scatter = st.multiselect(
+        "Variable independiente (X) - Selecciona una o más",
         options=x_options,
-        key="x_scatter",
-        index=0 if x_options else 0
+        default=x_options[1] if x_options else [], 
+        key="x_scatter_multi"
     )
 
 with col_btn:
@@ -949,19 +950,36 @@ with col_btn:
     if st.button("🔄 Actualizar gráfica", use_container_width=True, key="btn_scatter"):
         st.rerun()
 
-# Generar gráfica solo si hay selección válida
-if y_var_scatter and x_var_scatter:
-    try:
-        fig = plot_scatter_dynamic(df_analysis, y_col=y_var_scatter, x_col=x_var_scatter)
-        if fig is not None:
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("No hay datos suficientes para graficar esta combinación.")
-    except Exception as e:
-        st.error(f"❌ Error al generar gráfica: {e}")
-else:
-    st.info("ℹ️ El modelo no incluye diagnóstico. Asegúrese de que `multiple_regression` devuelva `'diagnostics'`.")
-
+# Generar gráficas para cada variable X seleccionada
+if y_var_scatter and x_vars_scatter:
+    
+    # Crear tabs para cada variable X
+    tabs = st.tabs([f"{x_var}" for x_var in x_vars_scatter])
+    
+    for i, x_var_scatter in enumerate(x_vars_scatter):
+        with tabs[i]:
+            try:
+                fig = plot_scatter_dynamic(df_analysis, y_col=y_var_scatter, x_col=x_var_scatter)
+                if fig is not None:
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Mostrar estadísticas adicionales
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        # Correlación
+                        corr = df_analysis[y_var_scatter].corr(df_analysis[x_var_scatter])
+                        st.metric("Correlación de Pearson", f"{corr:.4f}")
+                    with col2:
+                        # Covarianza
+                        cov = df_analysis[y_var_scatter].cov(df_analysis[x_var_scatter])
+                        st.metric("Covarianza", f"{cov:.4f}")
+                else:
+                    st.warning("No hay datos suficientes para graficar esta combinación.")
+            except Exception as e:
+                st.error(f"❌ Error al generar gráfica: {e}")
+                
+elif not x_vars_scatter:
+    st.info("💡 Selecciona al menos una variable independiente (X) para continuar.")
 
 # =============================================================================
 # FOOTER Y CRÉDITOS
