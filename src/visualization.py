@@ -1,17 +1,13 @@
 """
 Módulo para visualizaciones interactivas con Plotly
 """
-import base64
 
 import plotly.graph_objects as go
 import plotly.express as px
-import matplotlib.pyplot as plt
-import io
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
-import streamlit as st
 
 
 def create_dashboard_layout():
@@ -255,7 +251,6 @@ def plot_log_scatter(df: pd.DataFrame, y_col: str, x_col: str = None):
         **create_dashboard_layout()
     )
     return fig
-    pass
 
 def plot_residuals(residuals: np.ndarray, index):
     """Gráfica de residuos vs tiempo y QQ-plot profesional."""
